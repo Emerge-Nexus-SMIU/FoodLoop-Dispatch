@@ -23,3 +23,7 @@
 Software P0 and the hardening above are implemented. Actual mail delivery, exact registered legal details/support channel, approved legal/handling/retention policies and production hosting/monitoring/backup/key-management controls remain unverified. No cloud deployment or remote push occurred. Do not equate passing local tests with commercial/legal approval.
 
 Recurring availability, rolling capacity allocation, route optimization/provider integrations, multi-organization account switching, billing and defensible emissions reporting remain deferred product work. Current directory/team/export bounds and UTC reporting periods are documented; large-network performance is not established. Live billing requires separate authorization. The owner authorized source publication after local verification. Source, README, setup guide and actual screenshots are prepared for the initial main-branch push; cloud application deployment remains on hold.
+
+## Local worker troubleshooting update
+
+Worker failures now report the maintenance stage and Prisma error code without exposing raw query/connection details. One-shot failures exit nonzero. Lint/types passed; a stopped local database produced the expected sanitized reconcile/P1001 diagnostic. This validates diagnostics, not a fix for an as-yet unidentified laptop database failure.
