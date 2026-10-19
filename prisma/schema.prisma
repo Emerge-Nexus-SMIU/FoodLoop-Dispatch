@@ -1,0 +1,323 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                String         @id @default(cuid())
+  email             String         @unique
+  passwordHash      String
+  name              String
+  active            Boolean        @default(true)
+  platformAdmin     Boolean        @default(false)
+  createdAt         DateTime       @default(now())
+  emailVerifiedAt   DateTime?
+  mfaSecret         String?
+  mfaPendingSecret  String?
+  mfaLastCounter    BigInt?
+  recoveryHashes    String[]       @default([])
+  actionTokens      ActionToken[]
+  notifications     Notification[]
+  memberships       Membership[]
+  sessions          Session[]
+  createdLots       Lot[]          @relation("LotCreator")
+  assignedPickups   Pickup[]       @relation("PickupDispatcher")
+  donorHandovers    Handover[]     @relation("HandoverDonor")
+  receiverHandovers Handover[]     @relation("HandoverReceiver")
+  disputesOpened    Dispute[]      @relation("DisputeOpener")
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+model Organization {
+  id                   String                  @id @default(cuid())
+  name                 String
+  type                 String
+  verificationStatus   String                  @default("PENDING")
+  contact              String
+  timezone             String                  @default("Asia/Karachi")
+  demo                 Boolean                 @default(false)
+  createdAt            DateTime                @default(now())
+  memberships          Membership[]
+  locations            Location[]
+  profile              RecipientProfile?
+  lots                 Lot[]
+  offers               Offer[]
+  pickups              Pickup[]
+  recipientEvaluations EligibilityEvaluation[] @relation("RecipientEvaluations")
+  disputes             Dispute[]               @relation("DisputeOrg")
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String
+  user           User         @relation(fields: [userId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([userId, organizationId])
+}
+
+model Location {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id])
+  label               String
+  address             String
+  latitude            Float?
+  longitude           Float?
+  geoSource           String       @default("DECLARED")
+  contactInstructions String       @default("")
+  lots                Lot[]
+}
+
+model RecipientProfile {
+  id                          String       @id @default(cuid())
+  organizationId              String       @unique
+  organization                Organization @relation(fields: [organizationId], references: [id])
+  capacityValue               Decimal      @db.Decimal(12, 3)
+  capacityUnit                String
+  serviceRadiusKm             Float
+  acceptedCategories          String[]
+  specialHandlingCapabilities String[]
+  availableFrom               DateTime
+  availableUntil              DateTime
+  latitude                    Float?
+  longitude                   Float?
+}
+
+model Lot {
+  id                  String                  @id @default(cuid())
+  donorOrganizationId String
+  donor               Organization            @relation(fields: [donorOrganizationId], references: [id])
+  locationId          String
+  location            Location                @relation(fields: [locationId], references: [id])
+  title               String
+  category            String
+  description         String                  @default("")
+  quantityValue       Decimal                 @db.Decimal(12, 3)
+  quantityUnit        String
+  declaredWeightKg    Decimal?                @db.Decimal(12, 3)
+  packaging           String
+  allergensNote       String                  @default("")
+  handlingDeclaration String
+  storageRequirements String                  @default("AMBIENT")
+  pickupStart         DateTime
+  pickupEnd           DateTime
+  status              String                  @default("DRAFT")
+  createdById         String
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  version             Int                     @default(0)
+  evaluations         EligibilityEvaluation[]
+  offers              Offer[]
+  pickup              Pickup?
+  creator             User                    @relation("LotCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "Lot_creator_fkey")
+
+  @@index([donorOrganizationId, status, pickupEnd])
+  @@index([status, pickupEnd])
+}
+
+model EligibilityEvaluation {
+  id                      String       @id @default(cuid())
+  lotId                   String
+  lot                     Lot          @relation(fields: [lotId], references: [id])
+  recipientOrganizationId String
+  eligible                Boolean
+  reasonCodes             Json
+  scoreBreakdown          Json
+  matchScore              Float?
+  distanceKm              Float?
+  routeProvider           String       @default("HAVERSINE_OR_UNAVAILABLE")
+  evaluatedAt             DateTime     @default(now())
+  policyVersion           String
+  recipient               Organization @relation("RecipientEvaluations", fields: [recipientOrganizationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "Evaluation_recipient_fkey")
+
+  @@index([lotId, recipientOrganizationId])
+}
+
+model Offer {
+  id                      String       @id @default(cuid())
+  lotId                   String
+  lot                     Lot          @relation(fields: [lotId], references: [id])
+  recipientOrganizationId String
+  recipient               Organization @relation(fields: [recipientOrganizationId], references: [id])
+  status                  String       @default("PENDING")
+  sentAt                  DateTime     @default(now())
+  expiresAt               DateTime
+  acceptedAt              DateTime?
+
+  @@unique([lotId, recipientOrganizationId])
+  @@index([recipientOrganizationId, status])
+}
+
+model Pickup {
+  id                      String       @id @default(cuid())
+  lotId                   String       @unique
+  lot                     Lot          @relation(fields: [lotId], references: [id])
+  recipientOrganizationId String
+  recipient               Organization @relation(fields: [recipientOrganizationId], references: [id])
+  dispatcherUserId        String?
+  pickupStart             DateTime
+  pickupEnd               DateTime
+  scheduledAt             DateTime?
+  arrivedAt               DateTime?
+  completedAt             DateTime?
+  status                  String       @default("REQUESTED")
+  failureReason           String?
+  handover                Handover?
+  dispatcher              User?        @relation("PickupDispatcher", fields: [dispatcherUserId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "Pickup_dispatcher_fkey")
+  disputes                Dispute[]    @relation("DisputePickup")
+
+  @@index([dispatcherUserId, status])
+}
+
+model Handover {
+  id                    String            @id @default(cuid())
+  pickupId              String            @unique
+  pickup                Pickup            @relation(fields: [pickupId], references: [id])
+  donorActorId          String
+  receiverActorId       String?
+  verifiedQuantityValue Decimal           @db.Decimal(12, 3)
+  verifiedQuantityUnit  String
+  verifiedWeightKg      Decimal?          @db.Decimal(12, 3)
+  discrepancyReason     String?
+  codeHash              String
+  codeExpiresAt         DateTime
+  receiverConfirmedAt   DateTime?
+  verifiedAt            DateTime?
+  receiptReference      String            @unique @default(cuid())
+  verificationMethod    String            @default("TWO_PARTY_OTP")
+  status                String            @default("PENDING")
+  attempts              HandoverAttempt[]
+  donorActor            User              @relation("HandoverDonor", fields: [donorActorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "Handover_donor_fkey")
+  receiverActor         User?             @relation("HandoverReceiver", fields: [receiverActorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "Handover_receiver_fkey")
+}
+
+model HandoverAttempt {
+  id         String   @id @default(cuid())
+  handoverId String
+  handover   Handover @relation(fields: [handoverId], references: [id])
+  actorId    String
+  successful Boolean
+  reasonCode String
+  timestamp  DateTime @default(now())
+}
+
+model AuditEvent {
+  id             String   @id @default(cuid())
+  actorId        String?
+  organizationId String?
+  entityType     String
+  entityId       String
+  action         String
+  oldState       String?
+  newState       String?
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now())
+  correlationId  String
+
+  @@index([organizationId, createdAt])
+  @@index([entityId])
+}
+
+model Idempotency {
+  id         String   @id @default(cuid())
+  actorId    String
+  key        String
+  operation  String
+  resourceId String
+  createdAt  DateTime @default(now())
+
+  @@unique([actorId, key])
+}
+
+model RateLimit {
+  key      String   @id
+  count    Int      @default(1)
+  resetsAt DateTime
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String
+  payload   Json
+  seenAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model ActionToken {
+  id             String    @id @default(cuid())
+  tokenHash      String    @unique
+  kind           String
+  userId         String?
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email          String
+  organizationId String?
+  role           String?
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+  consumedAt     DateTime?
+
+  @@index([userId, kind, expiresAt])
+  @@index([organizationId, kind])
+}
+
+model MailOutbox {
+  id          String    @id @default(cuid())
+  payload     String
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now())
+  lockedUntil DateTime?
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  errorCode   String?
+
+  @@index([status, availableAt])
+}
+
+model MatchingPolicy {
+  id             String   @id @default("active")
+  capacityWeight Int      @default(35)
+  windowWeight   Int      @default(35)
+  distanceWeight Int      @default(30)
+  version        Int      @default(1)
+  updatedAt      DateTime @updatedAt
+}
+
+model Dispute {
+  id             String       @id @default(cuid())
+  pickupId       String
+  organizationId String
+  openedById     String
+  reason         String
+  status         String       @default("OPEN")
+  resolution     String?
+  resolvedById   String?
+  createdAt      DateTime     @default(now())
+  resolvedAt     DateTime?
+  pickup         Pickup       @relation("DisputePickup", fields: [pickupId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "Dispute_pickup_fkey")
+  organization   Organization @relation("DisputeOrg", fields: [organizationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "Dispute_org_fkey")
+  openedBy       User         @relation("DisputeOpener", fields: [openedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "Dispute_user_fkey")
+
+  @@index([organizationId, createdAt])
+  @@index([status, createdAt])
+}

@@ -1,0 +1,61 @@
+services:
+  db:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_USER: foodloop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foodloop_local}
+      POSTGRES_DB: foodloop
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U foodloop -d foodloop']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  migrate:
+    build:
+      context: .
+      target: build
+    environment:
+      DATABASE_URL: postgresql://foodloop:${POSTGRES_PASSWORD:-foodloop_local}@db:5432/foodloop
+    command: ['npm', 'run', 'db:migrate']
+    depends_on:
+      db:
+        condition: service_healthy
+  web:
+    build:
+      context: .
+      target: runner
+    environment:
+      DATABASE_URL: postgresql://foodloop:${POSTGRES_PASSWORD:-foodloop_local}@db:5432/foodloop
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      AUTH_ENCRYPTION_KEY: ${AUTH_ENCRYPTION_KEY:?Run npm run dev:configure first}
+      ALLOW_DEMO_LOGIN: 'true'
+      OPERATING_COUNTRY: PK
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  worker:
+    build:
+      context: .
+      target: build
+    environment:
+      DATABASE_URL: postgresql://foodloop:${POSTGRES_PASSWORD:-foodloop_local}@db:5432/foodloop
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      AUTH_ENCRYPTION_KEY: ${AUTH_ENCRYPTION_KEY:?Run npm run dev:configure first}
+      MAIL_TRANSPORT: file
+    command: ['npm', 'run', 'worker']
+    volumes:
+      - local_mail:/app/.local/mail
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:
+
+  local_mail:
